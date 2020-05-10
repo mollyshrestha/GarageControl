@@ -5,6 +5,15 @@
 #include <BlynkSimpleEsp8266.h>
 
 /***************************************************************/
+/*                  Task Timing                                */
+/***************************************************************/
+#define TASK_TIMING_10MS                              10
+#define TASK_TIMING_100MS                             100
+#define TASK_TIMING_500MS                             500    /* .05  Sec */
+#define TASK_TIMING_1SEC                              1000   /* 1 sec   */ 
+#define TASK_TIMING_1MIN                              (TASK_TIMING_1SEC * 60)   /* 1 MIN   */         
+
+/***************************************************************/
 /*                  PINS DEFINE                                */
 /***************************************************************/
 #define PHY_PIN_OUT_DOUBLE_GARAGE_DOOR                D6
@@ -16,15 +25,7 @@
 #define PHY_PIN_IN_SINGLE_GARAGE_DOOR                 D1
 
 #define GARAGE_OPEN_CLOSE_RELAY_DELAY                 1500   /* 1.5 Sec */
-#define DOOROPEN_NOTIFICATION                         2000
-
-/***************************************************************/
-/*                  Task Timing                                */
-/***************************************************************/
-#define TASK_TIMING_10MS                              10
-#define TASK_TIMING_100MS                             100
-#define TASK_TIMING_500MS                             500    /* .05  Sec */
-#define TASK_TIMING_1000MS                            1000          
+#define DOOROPEN_NOTIFICATION_TIMER                   (TASK_TIMING_1MIN * 5)  /* 5 min timer */
 
 /***************************************************************/
 /*                  Virtual Pin                               */
@@ -51,7 +52,7 @@
 /***************************************************************/
 /*                  static                         */
 /***************************************************************/
-int NotificationStatus;
+int DoorOpenNotificationStatus;
 int ResetStatus;
 
 /***************************************************************/
@@ -97,7 +98,7 @@ void SingleGarageDoorStatusSend()
 }
 
 BLYNK_WRITE(VIRTUAL_PIN_GARAGE_DOOR_NOTIFICATION_OUT) {
-    NotificationStatus = param.asInt();
+    DoorOpenNotificationStatus = param.asInt();
 }
 
 /* For Google to support Double Door */
@@ -162,6 +163,28 @@ void LcdDisplayWidget()
 }
 
 /***************************************************************/
+/*                  Door Open Notification Task xx min          */
+/***************************************************************/
+void DoorOpenNotificationTask()
+{
+    int readDoubleDoorStatus = digitalRead(PHY_PIN_IN_DOUBLE_GARAGE_DOOR);
+    int readSingleDoorStatus = digitalRead(PHY_PIN_IN_SINGLE_GARAGE_DOOR);
+    if((readDoubleDoorStatus == HIGH)  || 
+       (readSingleDoorStatus == HIGH))
+       {
+          if(DoorOpenNotificationStatus == HIGH)
+          {
+              Blynk.notify("Garage Door is still open");
+          }
+       }
+       else
+       {
+         Blynk.virtualWrite(VIRTUAL_PIN_GARAGE_DOOR_NOTIFICATION_OUT, LOW);
+       }
+       
+}
+
+/***************************************************************/
 /*                  Clear Reset Flag by User                  */
 /***************************************************************/
 BLYNK_WRITE(VIRTUAL_PIN_RESET_FLAG_CLEAR_IN)
@@ -194,12 +217,14 @@ void setup()
   
     Blynk.begin(auth_token, ssid, ssid_password);
     LcdDisplayInformation.clear();
+    Blynk.notify("Check Status for Garage Door due to Power lost");
     LcdDisplayInformation.print(0,1, "Reset");
     ResetStatus = true;
  
     IntervalTimer.setInterval(TASK_TIMING_500MS,  DoubleGarageDoorStatusSend);
     IntervalTimer.setInterval(TASK_TIMING_500MS,  SingleGarageDoorStatusSend);
-    IntervalTimer.setInterval(TASK_TIMING_1000MS, LcdDisplayWidget);
+    IntervalTimer.setInterval(TASK_TIMING_500MS,  LcdDisplayWidget);
+    IntervalTimer.setInterval(DOOROPEN_NOTIFICATION_TIMER,  DoorOpenNotificationTask);
  }
 
 /***************************************************************/
